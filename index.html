@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html dir="ltr" lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link rel="icon" href="favicon.png" style="background-color: white;">
+    <title>Healstro Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            height: 80vh;
+            width: 100%;
+        }
+
+        /* Style for the header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+
+        .header h4 {
+            margin: 0;
+        }
+
+        /* Style for the search bar */
+        #location-search {
+            padding: 3px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 300px;
+            height: 50px;
+        }
+
+        /* Style for the distance card */
+        #distance-card {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            width: 300px;
+            text-align: center;
+            display: none;
+            z-index: 999;
+        }
+
+        .card-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .card-content {
+            font-size: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="main-wrapper">
+        <div class="page-wrapper container">
+            <div class="page-breadcrumb">
+                <div class="row">
+                    <div class="col-12 d-flex no-block align-items-center">
+                        <div class="header">
+                            <div class="logo">
+                                <a href="index.php"><img src="img/logo.png" alt="#" style="margin-top: 0px;height: 70px;width: 400px;"></a>
+                            </div>
+                            <!-- Search Bar on the right -->
+                            <input type="text" id="location-search" placeholder="Search Location">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-md-12">
+                        <div id="map"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="distance-card">
+        <div class="card-title">Nearest Location</div>
+        <div class="card-content" id="distance-content"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <script>
+        // Initialize the map
+        const map = L.map('map').setView([10.966087, 78.060092], 10);
+
+        // Add OpenStreetMap Tile Layer
+        const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 8,
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Add geocoder search control
+        const geocoder = L.Control.Geocoder.nominatim();
+        L.Control.geocoder({
+            geocoder: geocoder,
+            collapsed: true
+        }).addTo(map);
+
+        const redIcon = L.icon({
+            iconUrl: 'img/location_icon.png',
+            iconSize: [40, 51],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+
+        const blueIcon = L.icon({
+    iconUrl: 'img/location_icon.png', // Replace this with the blue icon URL if available
+    iconSize: [40, 51],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+});
+        // Static Locations with Coordinates (Karur, Trichy, Coimbatore, Erode, Chennai)
+        const staticLocations = [
+            { name: 'Karur Branch', coords: [10.966087, 78.060092] },
+            { name: 'Trichy Branch', coords: [10.799309, 78.694172] },
+            { name: 'Coimbatore Branch', coords: [11.011902, 76.934941] },
+            { name: 'Erode Branch', coords: [11.349308, 77.709898] },
+            { name: 'Chennai Branch', coords: [13.052668, 80.241884] }
+        ];
+
+        // Mark static locations on the map
+        staticLocations.forEach(location => {
+            L.marker(location.coords, { icon: redIcon }).addTo(map).bindPopup(location.name);
+        });
+
+        // Function to calculate distance between two coordinates in kilometers
+        function calculateDistance(coord1, coord2) {
+            const R = 6371; // Radius of the Earth in km
+            const dLat = (coord2[0] - coord1[0]) * Math.PI / 180;
+            const dLng = (coord2[1] - coord1[1]) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(coord1[0] * Math.PI / 180) * Math.cos(coord2[0] * Math.PI / 180) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // Variable to store the previously added user location marker
+        let userMarker = null;
+        let route = null;
+
+        // Add event listener to search bar to wait for "Enter" key press
+        document.getElementById("location-search").addEventListener("keypress", async function (event) {
+            if (event.key === "Enter") { // Only trigger when Enter key is pressed
+                const location = this.value;
+                if (location.length > 3) { // Only fetch after 3 characters are entered
+                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${location}`);
+                    const data = await response.json();
+                    if (data.length > 0) {
+                        const userLocation = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+
+                        // Clear the previous user location marker and route
+                        if (userMarker) {
+                            map.removeLayer(userMarker);
+                        }
+                        if (route) {
+                            map.removeLayer(route);
+                        }
+
+                        // Add new user location marker (blue color)
+                        userMarker = L.marker(userLocation, { icon: blueIcon }).addTo(map).bindPopup("User Location");
+                        map.setView(userLocation, 10);
+
+                        // Find nearest static location
+                        let minDistance = Infinity;
+                        let nearestLocation = null;
+
+                        staticLocations.forEach(location => {
+                            const distance = calculateDistance(userLocation, location.coords);
+                            if (distance < minDistance) {
+                                minDistance = distance;
+                                nearestLocation = location;
+                            }
+                        });
+
+                        // Draw route to nearest static location
+                        if (nearestLocation) {
+                            route = L.polyline([userLocation, nearestLocation.coords], { color: 'blue' }).addTo(map);
+                            map.fitBounds(route.getBounds());
+
+                            // Display the minimum distance in the card
+                            document.getElementById("distance-card").style.display = "block";
+                            document.getElementById("distance-content").innerText = `Nearest Location: ${nearestLocation.name}\nDistance: ${minDistance.toFixed(2)} km`;
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
